@@ -211,6 +211,9 @@ export default function Home() {
     <div className="min-h-screen bg-amber-50 font-sans">
 
       {/* NAV */}
+      <div className="flex justify-center pt-4 pb-2">
+        <img src="/logo.png" alt="Curie's Catalogue" className="h-25"/>
+      </div>
       <div className="flex items-center justify-between px-6 py-4">
         <div className="flex items-center gap-3">
           <button
