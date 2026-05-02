@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { getResources, addResource, upvoteResource, searchResources, saveResource, unsaveResource, getSavedResources, logView, getComments, addComment } from '../lib/resources'
+import { getResources, addResource, upvoteResource, searchResources, saveResource, unsaveResource, getSavedResources, logView, getComments, addComment, followUser, unfollowUser, isFollowing, getFeedResources } from '../lib/resources'
 import { useRouter } from 'next/navigation'
 import { getCurrentUser, login, signup } from '../lib/auth'
 
@@ -48,6 +48,9 @@ export default function Home() {
   const router = useRouter()
   const [comments, setComments] = useState<any[]>([])
   const [commentText, setCommentText] = useState('')
+  const [showFeed, setShowFeed] = useState(false)
+  const [feedResources, setFeedResources] = useState<Resource[]>([])
+  const [followingMap, setFollowingMap] = useState<Record<string, boolean>>({})
 
   const [form, setForm] = useState({
     title: '', url: '', media_type: 'Video',
@@ -120,8 +123,6 @@ async function handleOpenResource(resource: Resource) {
   setComments(data || [])
 }
 
-
-
 async function loadSavedIds(user: string) {
   const data = await getSavedResources(user)
   if (data) setSavedIds(data.map((d: any) => d.resource_id))
@@ -134,6 +135,31 @@ async function handleAddComment() {
   setCommentText('')
   const data = await getComments(selected!.id)
   setComments(data || [])
+}
+
+async function handleShowFeed() {
+  if (!currentUser) { setShowAuth(true); return }
+  setShowFeed(true)
+  const data = await getFeedResources(currentUser)
+  setFeedResources(data || [])
+}
+
+async function handleFollowToggle(username: string) {
+  if (!currentUser || username === currentUser) return
+  const already = followingMap[username]
+  if (already) {
+    await unfollowUser(currentUser, username)
+    setFollowingMap({...followingMap, [username]: false})
+  } else {
+    await followUser(currentUser, username)
+    setFollowingMap({...followingMap, [username]: true})
+  }
+}
+
+async function checkFollowing(username: string) {
+  if (!currentUser || username === currentUser) return
+  const result = await isFollowing(currentUser, username)
+  setFollowingMap(prev => ({...prev, [username]: result}))
 }
 
   const allTags = resources.flatMap(r => r.tags ? r.tags.split(',').map(t => t.trim()) : [])
@@ -165,7 +191,10 @@ async function handleAddComment() {
               <path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/>
             </svg>
           </button>
-          <button className="bg-violet-500 text-white px-4 py-2 rounded-full font-semibold text-sm">
+          <button
+            onClick={handleShowFeed}
+            className="bg-violet-500 text-white px-4 py-2 rounded-full font-semibold text-sm hover:bg-violet-600 transition"
+          >
             Friend Activity
           </button>
           <button
@@ -294,7 +323,28 @@ async function handleAddComment() {
             )}
             <div className="p-6">
               <div className="flex items-center justify-between mb-3">
-                <p className="text-sm text-gray-500">Shared by <span className="font-semibold">{selected.submitted_by || 'anonymous'}</span></p>
+                <p className="text-sm text-gray-500">Shared by{' '}
+                  <button
+                    onClick={() => handleFollowToggle(selected.submitted_by)}
+                    onMouseEnter={() => checkFollowing(selected.submitted_by)}
+                    className="font-semibold hover:text-violet-500 transition"
+                  >
+                    {selected.submitted_by || 'anonymous'}
+                  </button>
+                  {selected.submitted_by && currentUser && selected.submitted_by !== currentUser && (
+                    <button
+                      onClick={() => handleFollowToggle(selected.submitted_by)}
+                      onMouseEnter={() => checkFollowing(selected.submitted_by)}
+                      className={`ml-2 text-xs px-2 py-0.5 rounded-full border transition ${
+                        followingMap[selected.submitted_by]
+                          ? 'bg-violet-500 text-white border-violet-500'
+                          : 'border-violet-300 text-violet-500 hover:bg-violet-50'
+                      }`}
+                    >
+                      {followingMap[selected.submitted_by] ? 'Following' : '+ Follow'}
+                    </button>
+                  )}
+                </p>
                 <p className="text-sm text-gray-400">{new Date(selected.created_at).toLocaleDateString()}</p>
               </div>
               {selected.tags && (
@@ -376,7 +426,26 @@ async function handleAddComment() {
                       </div>
                       <div>
                         <div className="flex items-center gap-2 mb-1">
-                          <span className="font-semibold text-sm">{c.username}</span>
+                          <button
+                            onClick={() => handleFollowToggle(c.username)}
+                            onMouseEnter={() => checkFollowing(c.username)}
+                            className="font-semibold text-sm hover:text-violet-500 transition"
+                          >
+                            {c.username}
+                          </button>
+                          {currentUser && c.username !== currentUser && (
+                            <button
+                              onClick={() => handleFollowToggle(c.username)}
+                              onMouseEnter={() => checkFollowing(c.username)}
+                              className={`text-xs px-2 py-0.5 rounded-full border transition ${
+                                followingMap[c.username]
+                                  ? 'bg-violet-500 text-white border-violet-500'
+                                  : 'border-violet-300 text-violet-500 hover:bg-violet-50'
+                              }`}
+                            >
+                              {followingMap[c.username] ? 'Following' : '+ Follow'}
+                            </button>
+                          )}
                           <span className="text-xs text-gray-400">{new Date(c.created_at).toLocaleDateString()}</span>
                         </div>
                         <p className="text-sm text-gray-700">{c.comment}</p>
@@ -462,6 +531,56 @@ async function handleAddComment() {
               >
                 {authMode === 'login' ? "Don't have an account? Sign up" : 'Already have an account? Log in'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* FRIEND ACTIVITY FEED */}
+      {showFeed && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-amber-50 rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center p-6 pb-0">
+              <h2 className="font-bold text-2xl">What my friends are up to!</h2>
+              <button onClick={() => setShowFeed(false)} className="text-2xl text-gray-400 hover:text-gray-600">✕</button>
+            </div>
+            <div className="p-6">
+              {feedResources.length === 0 ? (
+                <div className="text-center py-16 text-gray-400">
+                  <p className="text-lg">No activity yet!</p>
+                  <p className="text-sm mt-2">Follow some people to see what they're sharing.</p>
+                  <button
+                    onClick={() => setShowFeed(false)}
+                    className="mt-4 bg-violet-500 text-white px-6 py-2 rounded-full text-sm font-semibold hover:bg-violet-600 transition"
+                  >
+                    Go explore the library
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-3 gap-4">
+                  {feedResources.map(r => (
+                    <div
+                      key={r.id}
+                      onClick={() => { setShowFeed(false); handleOpenResource(r) }}
+                      className="cursor-pointer rounded-xl overflow-hidden bg-white shadow-sm hover:shadow-md transition group"
+                    >
+                      <div className="h-44 bg-gray-100 overflow-hidden">
+                        {getThumbnail(r) ? (
+                          <img src={getThumbnail(r)!} alt={r.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"/>
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-gray-300 text-4xl">◈</div>
+                        )}
+                      </div>
+                      <div className="p-3">
+                        <p className="font-semibold text-sm truncate">{r.title}</p>
+                        <p className="text-xs text-gray-400">{r.media_type}</p>
+                        <p className="text-xs text-violet-400 mt-1">
+                          shared by {r.submitted_by}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
