@@ -55,7 +55,7 @@ export default function ProfilePage() {
 
     const viewedData = await getRecentlyViewed(user)
     if (viewedData) {
-      const viewedIds = viewedData.map((d: any) => d.resource_id)
+      const viewedIds = [...new Set(viewedData.map((d: any) => d.resource_id))]
       const ordered = viewedIds.map((id: number) => all.find((r: Resource) => r.id === id)).filter(Boolean)
       setRecentResources(ordered)
     }
