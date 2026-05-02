@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { getResources, addResource, upvoteResource, searchResources } from '../lib/resources'
+import { getResources, addResource, upvoteResource, searchResources, saveResource, unsaveResource, getSavedResources, logView } from '../lib/resources'
 import { useRouter } from 'next/navigation'
 import { getCurrentUser, login, signup } from '../lib/auth'
 
@@ -44,6 +44,7 @@ export default function Home() {
   const [currentUser, setCurrentUser] = useState<string | null>(null)
   const [authForm, setAuthForm] = useState({ username: '', password: '' })
   const [authError, setAuthError] = useState('')
+  const [savedIds, setSavedIds] = useState<number[]>([])
   const router = useRouter()
 
   const [form, setForm] = useState({
@@ -53,7 +54,9 @@ export default function Home() {
 
   useEffect(() => {
     loadResources()
-    setCurrentUser(getCurrentUser())
+    const user = getCurrentUser()
+    setCurrentUser(user)
+    if (user) loadSavedIds(user)
   }, [])
 
   async function loadResources() {
@@ -95,6 +98,28 @@ export default function Home() {
       setFeatured(resources[Math.floor(Math.random() * resources.length)])
     }
   }
+
+  async function handleSave(resource: Resource) {
+  if (!currentUser) { setShowAuth(true); return }
+  const already = savedIds.includes(resource.id)
+  if (already) {
+    await unsaveResource(currentUser, resource.id)
+    setSavedIds(savedIds.filter(id => id !== resource.id))
+  } else {
+    await saveResource(currentUser, resource.id)
+    setSavedIds([...savedIds, resource.id])
+  }
+}
+
+async function handleOpenResource(resource: Resource) {
+  setSelected(resource)
+  if (currentUser) await logView(currentUser, resource.id)
+}
+
+async function loadSavedIds(user: string) {
+  const data = await getSavedResources(user)
+  if (data) setSavedIds(data.map((d: any) => d.resource_id))
+}
 
   const allTags = resources.flatMap(r => r.tags ? r.tags.split(',').map(t => t.trim()) : [])
   const tagCounts = allTags.reduce((acc: Record<string, number>, tag) => {
@@ -214,7 +239,7 @@ export default function Home() {
           {resources.map(r => (
             <div
               key={r.id}
-              onClick={() => setSelected(r)}
+              onClick={() => handleOpenResource(r)}
               className="cursor-pointer rounded-xl overflow-hidden bg-white shadow-sm hover:shadow-md transition group"
             >
               <div className="h-44 bg-gray-100 overflow-hidden">
@@ -239,53 +264,63 @@ export default function Home() {
         </div>
       </div>
 
-      {/* RESOURCE MODAL */}
-      {selected && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-amber-50 rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-start p-6 pb-0">
-              <h2 className="font-bold text-xl pr-4">{selected.title}</h2>
-              <button onClick={() => setSelected(null)} className="text-2xl text-gray-400 hover:text-gray-600">✕</button>
+    {/* RESOURCE MODAL */}
+    {selected && (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="bg-amber-50 rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+          <div className="flex justify-between items-start p-6 pb-0">
+            <h2 className="font-bold text-xl pr-4">{selected.title}</h2>
+            <button onClick={() => setSelected(null)} className="text-2xl text-gray-400 hover:text-gray-600">✕</button>
+          </div>
+          {getThumbnail(selected) && (
+            <div className="mx-6 mt-4 rounded-xl overflow-hidden h-56">
+              <img src={getThumbnail(selected)!} alt={selected.title} className="w-full h-full object-cover"/>
             </div>
-            {getThumbnail(selected) && (
-              <div className="mx-6 mt-4 rounded-xl overflow-hidden h-56">
-                <img src={getThumbnail(selected)!} alt={selected.title} className="w-full h-full object-cover"/>
+          )}
+          <div className="p-6">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-sm text-gray-500">Shared by <span className="font-semibold">{selected.submitted_by || 'anonymous'}</span></p>
+              <p className="text-sm text-gray-400">{new Date(selected.created_at).toLocaleDateString()}</p>
+            </div>
+            {selected.tags && (
+              <div className="flex flex-wrap gap-2 mb-4">
+                {selected.tags.split(',').map(t => (
+                  <span key={t} className="bg-violet-100 text-violet-700 px-3 py-1 rounded-full text-xs font-medium">{t.trim()}</span>
+                ))}
               </div>
             )}
-            <div className="p-6">
-              <div className="flex items-center justify-between mb-3">
-                <p className="text-sm text-gray-500">Shared by <span className="font-semibold">{selected.submitted_by || 'anonymous'}</span></p>
-                <p className="text-sm text-gray-400">{new Date(selected.created_at).toLocaleDateString()}</p>
-              </div>
-              {selected.tags && (
-                <div className="flex flex-wrap gap-2 mb-4">
-                  {selected.tags.split(',').map(t => (
-                    <span key={t} className="bg-violet-100 text-violet-700 px-3 py-1 rounded-full text-xs font-medium">{t.trim()}</span>
-                  ))}
-                </div>
-              )}
-              <p className="text-sm text-gray-700 mb-4">{selected.description}</p>
-              <div className="flex gap-3">
-                
-                <a
-                  href={selected.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="bg-violet-500 text-white px-5 py-2 rounded-full text-sm font-semibold hover:bg-violet-600 transition"
-                >
-                  Open Resource
-                </a>
-                <button
-                  onClick={() => handleUpvote(selected)}
-                  className="border border-violet-300 text-violet-500 px-5 py-2 rounded-full text-sm font-semibold hover:bg-violet-50 transition"
-                >
-                  👍 {selected.upvotes}
-                </button>
-              </div>
+            <p className="text-sm text-gray-700 mb-4">{selected.description}</p>
+            <div className="flex gap-3 flex-wrap">
+
+              <a
+                href={selected.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="bg-violet-500 text-white px-5 py-2 rounded-full text-sm font-semibold hover:bg-violet-600 transition"
+              >
+                Open Resource
+              </a>
+              <button
+                onClick={() => handleUpvote(selected)}
+                className="border border-violet-300 text-violet-500 px-5 py-2 rounded-full text-sm font-semibold hover:bg-violet-50 transition"
+              >
+                👍 {selected.upvotes}
+              </button>
+              <button
+                onClick={() => handleSave(selected)}
+                className={`px-5 py-2 rounded-full text-sm font-semibold transition border ${
+                  savedIds.includes(selected.id)
+                    ? 'bg-violet-500 text-white border-violet-500'
+                    : 'border-violet-300 text-violet-500 hover:bg-violet-50'
+                }`}
+              >
+                {savedIds.includes(selected.id) ? '🔖 Saved' : '🔖 Save'}
+              </button>
             </div>
           </div>
         </div>
-      )}
+      </div>
+    )}
 
       {/* ADD RESOURCE MODAL */}
       {showAdd && (
