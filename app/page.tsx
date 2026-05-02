@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { getResources, addResource, upvoteResource, searchResources, saveResource, unsaveResource, getSavedResources, logView } from '../lib/resources'
+import { getResources, addResource, upvoteResource, searchResources, saveResource, unsaveResource, getSavedResources, logView, getComments, addComment } from '../lib/resources'
 import { useRouter } from 'next/navigation'
 import { getCurrentUser, login, signup } from '../lib/auth'
 
@@ -46,6 +46,8 @@ export default function Home() {
   const [authError, setAuthError] = useState('')
   const [savedIds, setSavedIds] = useState<number[]>([])
   const router = useRouter()
+  const [comments, setComments] = useState<any[]>([])
+  const [commentText, setCommentText] = useState('')
 
   const [form, setForm] = useState({
     title: '', url: '', media_type: 'Video',
@@ -114,11 +116,24 @@ export default function Home() {
 async function handleOpenResource(resource: Resource) {
   setSelected(resource)
   if (currentUser) await logView(currentUser, resource.id)
+  const data = await getComments(resource.id)
+  setComments(data || [])
 }
+
+
 
 async function loadSavedIds(user: string) {
   const data = await getSavedResources(user)
   if (data) setSavedIds(data.map((d: any) => d.resource_id))
+}
+
+async function handleAddComment() {
+  if (!commentText.trim()) return
+  if (!currentUser) { setShowAuth(true); return }
+  await addComment(selected!.id, currentUser, commentText)
+  setCommentText('')
+  const data = await getComments(selected!.id)
+  setComments(data || [])
 }
 
   const allTags = resources.flatMap(r => r.tags ? r.tags.split(',').map(t => t.trim()) : [])
@@ -264,63 +279,116 @@ async function loadSavedIds(user: string) {
         </div>
       </div>
 
-    {/* RESOURCE MODAL */}
-    {selected && (
-      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-        <div className="bg-amber-50 rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-          <div className="flex justify-between items-start p-6 pb-0">
-            <h2 className="font-bold text-xl pr-4">{selected.title}</h2>
-            <button onClick={() => setSelected(null)} className="text-2xl text-gray-400 hover:text-gray-600">✕</button>
-          </div>
-          {getThumbnail(selected) && (
-            <div className="mx-6 mt-4 rounded-xl overflow-hidden h-56">
-              <img src={getThumbnail(selected)!} alt={selected.title} className="w-full h-full object-cover"/>
+      {/* RESOURCE MODAL */}
+      {selected && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-amber-50 rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-start p-6 pb-0">
+              <h2 className="font-bold text-xl pr-4">{selected.title}</h2>
+              <button onClick={() => { setSelected(null); setComments([]); setCommentText('') }} className="text-2xl text-gray-400 hover:text-gray-600">✕</button>
             </div>
-          )}
-          <div className="p-6">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-sm text-gray-500">Shared by <span className="font-semibold">{selected.submitted_by || 'anonymous'}</span></p>
-              <p className="text-sm text-gray-400">{new Date(selected.created_at).toLocaleDateString()}</p>
-            </div>
-            {selected.tags && (
-              <div className="flex flex-wrap gap-2 mb-4">
-                {selected.tags.split(',').map(t => (
-                  <span key={t} className="bg-violet-100 text-violet-700 px-3 py-1 rounded-full text-xs font-medium">{t.trim()}</span>
-                ))}
+            {getThumbnail(selected) && (
+              <div className="mx-6 mt-4 rounded-xl overflow-hidden h-56">
+                <img src={getThumbnail(selected)!} alt={selected.title} className="w-full h-full object-cover"/>
               </div>
             )}
-            <p className="text-sm text-gray-700 mb-4">{selected.description}</p>
-            <div className="flex gap-3 flex-wrap">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-sm text-gray-500">Shared by <span className="font-semibold">{selected.submitted_by || 'anonymous'}</span></p>
+                <p className="text-sm text-gray-400">{new Date(selected.created_at).toLocaleDateString()}</p>
+              </div>
+              {selected.tags && (
+                <div className="flex flex-wrap gap-2 mb-4">
+                  {selected.tags.split(',').map(t => (
+                    <span key={t} className="bg-violet-100 text-violet-700 px-3 py-1 rounded-full text-xs font-medium">{t.trim()}</span>
+                  ))}
+                </div>
+              )}
+              <p className="text-sm text-gray-700 mb-4">{selected.description}</p>
+              <div className="flex gap-3 flex-wrap mb-6">
+                <a
+                  href={selected.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="bg-violet-500 text-white px-5 py-2 rounded-full text-sm font-semibold hover:bg-violet-600 transition"
+                >
+                  Open Resource
+                </a>
+                <button
+                  onClick={() => handleUpvote(selected)}
+                  className="border border-violet-300 text-violet-500 px-5 py-2 rounded-full text-sm font-semibold hover:bg-violet-50 transition"
+                >
+                  👍 {selected.upvotes}
+                </button>
+                <button
+                  onClick={() => handleSave(selected)}
+                  className={`px-5 py-2 rounded-full text-sm font-semibold transition border ${
+                    savedIds.includes(selected.id)
+                      ? 'bg-violet-500 text-white border-violet-500'
+                      : 'border-violet-300 text-violet-500 hover:bg-violet-50'
+                  }`}
+                >
+                  {savedIds.includes(selected.id) ? '🔖 Saved' : '🔖 Save'}
+                </button>
+              </div>
 
-              <a
-                href={selected.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="bg-violet-500 text-white px-5 py-2 rounded-full text-sm font-semibold hover:bg-violet-600 transition"
-              >
-                Open Resource
-              </a>
-              <button
-                onClick={() => handleUpvote(selected)}
-                className="border border-violet-300 text-violet-500 px-5 py-2 rounded-full text-sm font-semibold hover:bg-violet-50 transition"
-              >
-                👍 {selected.upvotes}
-              </button>
-              <button
-                onClick={() => handleSave(selected)}
-                className={`px-5 py-2 rounded-full text-sm font-semibold transition border ${
-                  savedIds.includes(selected.id)
-                    ? 'bg-violet-500 text-white border-violet-500'
-                    : 'border-violet-300 text-violet-500 hover:bg-violet-50'
-                }`}
-              >
-                {savedIds.includes(selected.id) ? '🔖 Saved' : '🔖 Save'}
-              </button>
+              {/* DISCUSSION */}
+              <div className="border-t border-gray-200 pt-4">
+                <h3 className="font-bold text-base mb-4">Discussion</h3>
+                
+                {/* COMMENT INPUT */}
+                <div className="flex gap-2 mb-4">
+                  <div className="w-8 h-8 rounded-full bg-violet-500 flex items-center justify-center text-white flex-shrink-0">
+                    <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
+                      <path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/>
+                    </svg>
+                  </div>
+                  <div className="flex-1 flex gap-2">
+                    <input
+                      className="flex-1 border border-gray-200 rounded-full px-4 py-2 text-sm outline-none focus:border-violet-400 bg-white"
+                      placeholder={currentUser ? "Add a comment..." : "Log in to comment"}
+                      value={commentText}
+                      onChange={e => setCommentText(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && handleAddComment()}
+                      disabled={!currentUser}
+                    />
+                    <button
+                      onClick={handleAddComment}
+                      disabled={!currentUser}
+                      className="bg-violet-500 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-violet-600 transition disabled:opacity-40"
+                    >
+                      Post
+                    </button>
+                  </div>
+                </div>
+
+                {/* COMMENTS LIST */}
+                <div className="flex flex-col gap-3">
+                  {comments.length === 0 && (
+                    <p className="text-gray-400 text-sm text-center py-4">No comments yet — be the first!</p>
+                  )}
+                  {comments.map(c => (
+                    <div key={c.id} className="flex gap-3">
+                      <div className="w-8 h-8 rounded-full bg-violet-200 flex items-center justify-center text-violet-600 flex-shrink-0">
+                        <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
+                          <path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/>
+                        </svg>
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="font-semibold text-sm">{c.username}</span>
+                          <span className="text-xs text-gray-400">{new Date(c.created_at).toLocaleDateString()}</span>
+                        </div>
+                        <p className="text-sm text-gray-700">{c.comment}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
         </div>
-      </div>
-    )}
+      )}
 
       {/* ADD RESOURCE MODAL */}
       {showAdd && (
