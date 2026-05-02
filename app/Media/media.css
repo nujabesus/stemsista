@@ -1,0 +1,99 @@
+.media-page {
+  min-height: 100vh;
+  background: white;
+  padding: 0;
+  font-family: Arial, sans-serif;
+}
+
+.media-card {
+  width: 100vw;
+  min-height: 100vh;
+  background: #fff8df;
+  padding: 40px 70px;
+  position: relative;
+  overflow-y: auto;
+}
+
+.close-button {
+  position: absolute;
+  top: 18px;
+  right: 22px;
+  border: none;
+  background: transparent;
+  color: #7f63d9;
+  font-size: 42px;
+  cursor: pointer;
+}
+
+.media-card h1 {
+  font-size: 26px;
+  margin-bottom: 14px;
+  font-weight: 800;
+}
+
+.media-image {
+  width: 100%;
+  height: 330px;
+  object-fit: cover;
+  border: 3px solid black;
+}
+
+.media-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 14px;
+  font-size: 14px;
+}
+
+.user,
+.comment {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.avatar {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: black;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tags {
+  display: flex;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.tags span {
+  background: #8265d8;
+  color: white;
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-weight: bold;
+  font-size: 13px;
+}
+
+.description {
+  margin-top: 14px;
+  color: #8b8b8b;
+  font-weight: 600;
+  line-height: 1.7;
+}
+
+.media-card h3 {
+  margin-top: 18px;
+  font-size: 15px;
+  text-decoration: underline;
+}
+
+.comment p {
+  margin: 4px 0 0;
+  color: #8b8b8b;
+  font-weight: 600;
+}
