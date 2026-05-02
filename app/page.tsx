@@ -1,14 +1,9 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { getResources, addResource, upvoteResource, searchResources, saveResource, unsaveResource, getSavedResources, logView, getComments, addComment, followUser, unfollowUser, isFollowing, getFeedResources } from '../lib/resources'
+import { getResources, addResource, upvoteResource, searchResources, saveResource, unsaveResource, getSavedResources, logView, getComments, addComment, followUser, unfollowUser, isFollowing, getFeedResources, getReplies, addReply } from '../lib/resources'
 import { useRouter } from 'next/navigation'
 import { getCurrentUser, login, signup } from '../lib/auth'
-
-const CATEGORIES = [
-  'Motivational', 'Women of Colour', 'Neurodivergent', 'Computing',
-  'Maths', 'Engineering', 'Tech', 'News', 'Self Discovery', 'Career'
-]
 
 const MEDIA_TYPES = ['Video', 'Book', 'Podcast', 'Blog', 'Talk', 'Movie']
 
@@ -31,7 +26,24 @@ type Resource = {
   created_at: string
 }
 
+type Comment = {
+  id: number
+  resource_id: number
+  username: string
+  comment: string
+  created_at: string
+}
+
+type Reply = {
+  id: number
+  comment_id: number
+  username: string
+  reply: string
+  created_at: string
+}
+
 export default function Home() {
+  const router = useRouter()
   const [resources, setResources] = useState<Resource[]>([])
   const [featured, setFeatured] = useState<Resource | null>(null)
   const [selected, setSelected] = useState<Resource | null>(null)
@@ -45,12 +57,14 @@ export default function Home() {
   const [authForm, setAuthForm] = useState({ username: '', password: '' })
   const [authError, setAuthError] = useState('')
   const [savedIds, setSavedIds] = useState<number[]>([])
-  const router = useRouter()
-  const [comments, setComments] = useState<any[]>([])
+  const [comments, setComments] = useState<Comment[]>([])
   const [commentText, setCommentText] = useState('')
   const [showFeed, setShowFeed] = useState(false)
   const [feedResources, setFeedResources] = useState<Resource[]>([])
   const [followingMap, setFollowingMap] = useState<Record<string, boolean>>({})
+  const [repliesMap, setRepliesMap] = useState<Record<number, Reply[]>>({})
+  const [replyText, setReplyText] = useState<Record<number, string>>({})
+  const [showReplies, setShowReplies] = useState<Record<number, boolean>>({})
 
   const [form, setForm] = useState({
     title: '', url: '', media_type: 'Video',
@@ -105,62 +119,85 @@ export default function Home() {
   }
 
   async function handleSave(resource: Resource) {
-  if (!currentUser) { setShowAuth(true); return }
-  const already = savedIds.includes(resource.id)
-  if (already) {
-    await unsaveResource(currentUser, resource.id)
-    setSavedIds(savedIds.filter(id => id !== resource.id))
-  } else {
-    await saveResource(currentUser, resource.id)
-    setSavedIds([...savedIds, resource.id])
+    if (!currentUser) { setShowAuth(true); return }
+    const already = savedIds.includes(resource.id)
+    if (already) {
+      await unsaveResource(currentUser, resource.id)
+      setSavedIds(savedIds.filter(id => id !== resource.id))
+    } else {
+      await saveResource(currentUser, resource.id)
+      setSavedIds([...savedIds, resource.id])
+    }
   }
-}
 
-async function handleOpenResource(resource: Resource) {
-  setSelected(resource)
-  if (currentUser) await logView(currentUser, resource.id)
-  const data = await getComments(resource.id)
-  setComments(data || [])
-}
-
-async function loadSavedIds(user: string) {
-  const data = await getSavedResources(user)
-  if (data) setSavedIds(data.map((d: any) => d.resource_id))
-}
-
-async function handleAddComment() {
-  if (!commentText.trim()) return
-  if (!currentUser) { setShowAuth(true); return }
-  await addComment(selected!.id, currentUser, commentText)
-  setCommentText('')
-  const data = await getComments(selected!.id)
-  setComments(data || [])
-}
-
-async function handleShowFeed() {
-  if (!currentUser) { setShowAuth(true); return }
-  setShowFeed(true)
-  const data = await getFeedResources(currentUser)
-  setFeedResources(data || [])
-}
-
-async function handleFollowToggle(username: string) {
-  if (!currentUser || username === currentUser) return
-  const already = followingMap[username]
-  if (already) {
-    await unfollowUser(currentUser, username)
-    setFollowingMap({...followingMap, [username]: false})
-  } else {
-    await followUser(currentUser, username)
-    setFollowingMap({...followingMap, [username]: true})
+  async function handleOpenResource(resource: Resource) {
+    setSelected(resource)
+    setComments([])
+    setRepliesMap({})
+    setShowReplies({})
+    if (currentUser) await logView(currentUser, resource.id)
+    const data = await getComments(resource.id)
+    setComments(data || [])
   }
-}
 
-async function checkFollowing(username: string) {
-  if (!currentUser || username === currentUser) return
-  const result = await isFollowing(currentUser, username)
-  setFollowingMap(prev => ({...prev, [username]: result}))
-}
+  async function loadSavedIds(user: string) {
+    const data = await getSavedResources(user)
+    if (data) setSavedIds(data.map((d: any) => d.resource_id))
+  }
+
+  async function handleAddComment() {
+    if (!commentText.trim()) return
+    if (!currentUser) { setShowAuth(true); return }
+    await addComment(selected!.id, currentUser, commentText)
+    setCommentText('')
+    const data = await getComments(selected!.id)
+    setComments(data || [])
+  }
+
+  async function handleShowFeed() {
+    if (!currentUser) { setShowAuth(true); return }
+    setShowFeed(true)
+    const data = await getFeedResources(currentUser)
+    setFeedResources(data || [])
+  }
+
+  async function handleFollowToggle(username: string) {
+    if (!currentUser || username === currentUser) return
+    const already = followingMap[username]
+    if (already) {
+      await unfollowUser(currentUser, username)
+      setFollowingMap({...followingMap, [username]: false})
+    } else {
+      await followUser(currentUser, username)
+      setFollowingMap({...followingMap, [username]: true})
+    }
+  }
+
+  async function checkFollowing(username: string) {
+    if (!currentUser || username === currentUser) return
+    const result = await isFollowing(currentUser, username)
+    setFollowingMap(prev => ({...prev, [username]: result}))
+  }
+
+  async function handleLoadReplies(commentId: number) {
+    const showing = showReplies[commentId]
+    setShowReplies(prev => ({...prev, [commentId]: !showing}))
+    if (!showing && !repliesMap[commentId]) {
+      const data = await getReplies(commentId)
+      setRepliesMap(prev => ({...prev, [commentId]: data || []}))
+    }
+  }
+
+  async function handleAddReply(commentId: number) {
+    const text = replyText[commentId]
+    if (!text?.trim()) return
+    if (!currentUser) { setShowAuth(true); return }
+    await addReply(commentId, currentUser, text)
+    setReplyText(prev => ({...prev, [commentId]: ''}))
+    const data = await getReplies(commentId)
+    setRepliesMap(prev => ({...prev, [commentId]: data || []}))
+    setShowReplies(prev => ({...prev, [commentId]: true}))
+  }
 
   const allTags = resources.flatMap(r => r.tags ? r.tags.split(',').map(t => t.trim()) : [])
   const tagCounts = allTags.reduce((acc: Record<string, number>, tag) => {
@@ -168,7 +205,6 @@ async function checkFollowing(username: string) {
     return acc
   }, {})
   const sortedTags = Object.entries(tagCounts).sort((a, b) => a[0].localeCompare(b[0]))
-
   const getThumbnail = (r: Resource) => r.thumbnail_url || getYoutubeThumbnail(r.url) || null
 
   return (
@@ -178,29 +214,17 @@ async function checkFollowing(username: string) {
       <div className="flex items-center justify-between px-6 py-4">
         <div className="flex items-center gap-3">
           <button
-            onClick={() => {
-              if (currentUser) {
-                router.push('/profile')
-              } else {
-                setShowAuth(true)
-              }
-            }}
+            onClick={() => { if (currentUser) { router.push('/profile') } else { setShowAuth(true) } }}
             className="w-10 h-10 rounded-full bg-violet-500 flex items-center justify-center text-white hover:bg-violet-600 transition"
           >
             <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
               <path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/>
             </svg>
           </button>
-          <button
-            onClick={handleShowFeed}
-            className="bg-violet-500 text-white px-4 py-2 rounded-full font-semibold text-sm hover:bg-violet-600 transition"
-          >
+          <button onClick={handleShowFeed} className="bg-violet-500 text-white px-4 py-2 rounded-full font-semibold text-sm hover:bg-violet-600 transition">
             Friend Activity
           </button>
-          <button
-            onClick={() => setShowTags(!showTags)}
-            className="text-sm font-semibold underline text-gray-700 ml-2"
-          >
+          <button onClick={() => setShowTags(!showTags)} className="text-sm font-semibold underline text-gray-700 ml-2">
             Explore Tags
           </button>
         </div>
@@ -216,10 +240,7 @@ async function checkFollowing(username: string) {
               <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
             </svg>
           </div>
-          <button
-            onClick={() => setShowAdd(true)}
-            className="w-10 h-10 rounded-full bg-violet-500 text-white flex items-center justify-center text-2xl font-light shadow"
-          >+</button>
+          <button onClick={() => setShowAdd(true)} className="w-10 h-10 rounded-full bg-violet-500 text-white flex items-center justify-center text-2xl font-light shadow">+</button>
         </div>
       </div>
 
@@ -247,19 +268,13 @@ async function checkFollowing(username: string) {
         {/* FEATURE OF THE DAY */}
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-2xl font-bold">Feature of the Day</h2>
-          <button
-            onClick={randomize}
-            className="bg-violet-500 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-violet-600 transition"
-          >
+          <button onClick={randomize} className="bg-violet-500 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-violet-600 transition">
             Randomize
           </button>
         </div>
 
         {featured ? (
-          <div
-            onClick={() => setSelected(featured)}
-            className="w-full h-64 rounded-2xl overflow-hidden mb-6 cursor-pointer relative group"
-          >
+          <div onClick={() => handleOpenResource(featured)} className="w-full h-64 rounded-2xl overflow-hidden mb-6 cursor-pointer relative group">
             {getThumbnail(featured) ? (
               <img src={getThumbnail(featured)!} alt={featured.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"/>
             ) : (
@@ -281,11 +296,7 @@ async function checkFollowing(username: string) {
         {/* GRID */}
         <div className="grid grid-cols-3 gap-4">
           {resources.map(r => (
-            <div
-              key={r.id}
-              onClick={() => handleOpenResource(r)}
-              className="cursor-pointer rounded-xl overflow-hidden bg-white shadow-sm hover:shadow-md transition group"
-            >
+            <div key={r.id} onClick={() => handleOpenResource(r)} className="cursor-pointer rounded-xl overflow-hidden bg-white shadow-sm hover:shadow-md transition group">
               <div className="h-44 bg-gray-100 overflow-hidden">
                 {getThumbnail(r) ? (
                   <img src={getThumbnail(r)!} alt={r.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"/>
@@ -296,10 +307,7 @@ async function checkFollowing(username: string) {
               <div className="p-3">
                 <p className="font-semibold text-sm truncate">{r.title}</p>
                 <p className="text-xs text-gray-400">{r.media_type}</p>
-                <button
-                  onClick={e => { e.stopPropagation(); handleUpvote(r) }}
-                  className="mt-2 text-xs text-violet-500 font-semibold hover:text-violet-700"
-                >
+                <button onClick={e => { e.stopPropagation(); handleUpvote(r) }} className="mt-2 text-xs text-violet-500 font-semibold hover:text-violet-700">
                   👍 {r.upvotes}
                 </button>
               </div>
@@ -324,22 +332,14 @@ async function checkFollowing(username: string) {
             <div className="p-6">
               <div className="flex items-center justify-between mb-3">
                 <p className="text-sm text-gray-500">Shared by{' '}
-                  <button
-                    onClick={() => handleFollowToggle(selected.submitted_by)}
-                    onMouseEnter={() => checkFollowing(selected.submitted_by)}
-                    className="font-semibold hover:text-violet-500 transition"
-                  >
+                  <button onClick={() => handleFollowToggle(selected.submitted_by)} onMouseEnter={() => checkFollowing(selected.submitted_by)} className="font-semibold hover:text-violet-500 transition">
                     {selected.submitted_by || 'anonymous'}
                   </button>
                   {selected.submitted_by && currentUser && selected.submitted_by !== currentUser && (
                     <button
                       onClick={() => handleFollowToggle(selected.submitted_by)}
                       onMouseEnter={() => checkFollowing(selected.submitted_by)}
-                      className={`ml-2 text-xs px-2 py-0.5 rounded-full border transition ${
-                        followingMap[selected.submitted_by]
-                          ? 'bg-violet-500 text-white border-violet-500'
-                          : 'border-violet-300 text-violet-500 hover:bg-violet-50'
-                      }`}
+                      className={`ml-2 text-xs px-2 py-0.5 rounded-full border transition ${followingMap[selected.submitted_by] ? 'bg-violet-500 text-white border-violet-500' : 'border-violet-300 text-violet-500 hover:bg-violet-50'}`}
                     >
                       {followingMap[selected.submitted_by] ? 'Following' : '+ Follow'}
                     </button>
@@ -356,27 +356,15 @@ async function checkFollowing(username: string) {
               )}
               <p className="text-sm text-gray-700 mb-4">{selected.description}</p>
               <div className="flex gap-3 flex-wrap mb-6">
-                <a
-                  href={selected.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="bg-violet-500 text-white px-5 py-2 rounded-full text-sm font-semibold hover:bg-violet-600 transition"
-                >
+                <a href={selected.url} target="_blank" rel="noopener noreferrer" className="bg-violet-500 text-white px-5 py-2 rounded-full text-sm font-semibold hover:bg-violet-600 transition">
                   Open Resource
                 </a>
-                <button
-                  onClick={() => handleUpvote(selected)}
-                  className="border border-violet-300 text-violet-500 px-5 py-2 rounded-full text-sm font-semibold hover:bg-violet-50 transition"
-                >
+                <button onClick={() => handleUpvote(selected)} className="border border-violet-300 text-violet-500 px-5 py-2 rounded-full text-sm font-semibold hover:bg-violet-50 transition">
                   👍 {selected.upvotes}
                 </button>
                 <button
                   onClick={() => handleSave(selected)}
-                  className={`px-5 py-2 rounded-full text-sm font-semibold transition border ${
-                    savedIds.includes(selected.id)
-                      ? 'bg-violet-500 text-white border-violet-500'
-                      : 'border-violet-300 text-violet-500 hover:bg-violet-50'
-                  }`}
+                  className={`px-5 py-2 rounded-full text-sm font-semibold transition border ${savedIds.includes(selected.id) ? 'bg-violet-500 text-white border-violet-500' : 'border-violet-300 text-violet-500 hover:bg-violet-50'}`}
                 >
                   {savedIds.includes(selected.id) ? '🔖 Saved' : '🔖 Save'}
                 </button>
@@ -385,8 +373,6 @@ async function checkFollowing(username: string) {
               {/* DISCUSSION */}
               <div className="border-t border-gray-200 pt-4">
                 <h3 className="font-bold text-base mb-4">Discussion</h3>
-                
-                {/* COMMENT INPUT */}
                 <div className="flex gap-2 mb-4">
                   <div className="w-8 h-8 rounded-full bg-violet-500 flex items-center justify-center text-white flex-shrink-0">
                     <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
@@ -402,18 +388,13 @@ async function checkFollowing(username: string) {
                       onKeyDown={e => e.key === 'Enter' && handleAddComment()}
                       disabled={!currentUser}
                     />
-                    <button
-                      onClick={handleAddComment}
-                      disabled={!currentUser}
-                      className="bg-violet-500 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-violet-600 transition disabled:opacity-40"
-                    >
+                    <button onClick={handleAddComment} disabled={!currentUser} className="bg-violet-500 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-violet-600 transition disabled:opacity-40">
                       Post
                     </button>
                   </div>
                 </div>
 
-                {/* COMMENTS LIST */}
-                <div className="flex flex-col gap-3">
+                <div className="flex flex-col gap-4">
                   {comments.length === 0 && (
                     <p className="text-gray-400 text-sm text-center py-4">No comments yet — be the first!</p>
                   )}
@@ -424,31 +405,72 @@ async function checkFollowing(username: string) {
                           <path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/>
                         </svg>
                       </div>
-                      <div>
+                      <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
-                          <button
-                            onClick={() => handleFollowToggle(c.username)}
-                            onMouseEnter={() => checkFollowing(c.username)}
-                            className="font-semibold text-sm hover:text-violet-500 transition"
-                          >
+                          <button onClick={() => handleFollowToggle(c.username)} onMouseEnter={() => checkFollowing(c.username)} className="font-semibold text-sm hover:text-violet-500 transition">
                             {c.username}
                           </button>
                           {currentUser && c.username !== currentUser && (
                             <button
                               onClick={() => handleFollowToggle(c.username)}
                               onMouseEnter={() => checkFollowing(c.username)}
-                              className={`text-xs px-2 py-0.5 rounded-full border transition ${
-                                followingMap[c.username]
-                                  ? 'bg-violet-500 text-white border-violet-500'
-                                  : 'border-violet-300 text-violet-500 hover:bg-violet-50'
-                              }`}
+                              className={`text-xs px-2 py-0.5 rounded-full border transition ${followingMap[c.username] ? 'bg-violet-500 text-white border-violet-500' : 'border-violet-300 text-violet-500 hover:bg-violet-50'}`}
                             >
                               {followingMap[c.username] ? 'Following' : '+ Follow'}
                             </button>
                           )}
                           <span className="text-xs text-gray-400">{new Date(c.created_at).toLocaleDateString()}</span>
                         </div>
-                        <p className="text-sm text-gray-700">{c.comment}</p>
+                        <p className="text-sm text-gray-700 mb-2">{c.comment}</p>
+
+                        {/* REPLY BUTTON */}
+                        <button
+                          onClick={() => handleLoadReplies(c.id)}
+                          className="text-xs text-violet-400 hover:text-violet-600 font-medium"
+                        >
+                          {showReplies[c.id] ? 'Hide replies' : `Reply${repliesMap[c.id]?.length ? ` (${repliesMap[c.id].length})` : ''}`}
+                        </button>
+
+                        {/* REPLIES */}
+                        {showReplies[c.id] && (
+                          <div className="mt-3 ml-4 border-l-2 border-violet-100 pl-4 flex flex-col gap-3">
+                            {(repliesMap[c.id] || []).map(r => (
+                              <div key={r.id} className="flex gap-2">
+                                <div className="w-6 h-6 rounded-full bg-violet-100 flex items-center justify-center text-violet-500 flex-shrink-0">
+                                  <svg viewBox="0 0 24 24" fill="currentColor" className="w-3 h-3">
+                                    <path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/>
+                                  </svg>
+                                </div>
+                                <div>
+                                  <div className="flex items-center gap-2 mb-0.5">
+                                    <span className="font-semibold text-xs">{r.username}</span>
+                                    <span className="text-xs text-gray-400">{new Date(r.created_at).toLocaleDateString()}</span>
+                                  </div>
+                                  <p className="text-xs text-gray-700">{r.reply}</p>
+                                </div>
+                              </div>
+                            ))}
+
+                            {/* REPLY INPUT */}
+                            {currentUser && (
+                              <div className="flex gap-2 mt-1">
+                                <input
+                                  className="flex-1 border border-gray-200 rounded-full px-3 py-1.5 text-xs outline-none focus:border-violet-400 bg-white"
+                                  placeholder="Write a reply..."
+                                  value={replyText[c.id] || ''}
+                                  onChange={e => setReplyText(prev => ({...prev, [c.id]: e.target.value}))}
+                                  onKeyDown={e => e.key === 'Enter' && handleAddReply(c.id)}
+                                />
+                                <button
+                                  onClick={() => handleAddReply(c.id)}
+                                  className="bg-violet-500 text-white px-3 py-1.5 rounded-full text-xs font-semibold hover:bg-violet-600 transition"
+                                >
+                                  Reply
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -484,6 +506,7 @@ async function checkFollowing(username: string) {
           </div>
         </div>
       )}
+
       {/* AUTH MODAL */}
       {showAuth && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -525,16 +548,14 @@ async function checkFollowing(username: string) {
               >
                 {authMode === 'login' ? 'Log In' : 'Create Account'}
               </button>
-              <button
-                onClick={() => setAuthMode(authMode === 'login' ? 'signup' : 'login')}
-                className="text-sm text-gray-400 hover:text-gray-600 text-center"
-              >
+              <button onClick={() => setAuthMode(authMode === 'login' ? 'signup' : 'login')} className="text-sm text-gray-400 hover:text-gray-600 text-center">
                 {authMode === 'login' ? "Don't have an account? Sign up" : 'Already have an account? Log in'}
               </button>
             </div>
           </div>
         </div>
       )}
+
       {/* FRIEND ACTIVITY FEED */}
       {showFeed && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -548,21 +569,14 @@ async function checkFollowing(username: string) {
                 <div className="text-center py-16 text-gray-400">
                   <p className="text-lg">No activity yet!</p>
                   <p className="text-sm mt-2">Follow some people to see what they're sharing.</p>
-                  <button
-                    onClick={() => setShowFeed(false)}
-                    className="mt-4 bg-violet-500 text-white px-6 py-2 rounded-full text-sm font-semibold hover:bg-violet-600 transition"
-                  >
+                  <button onClick={() => setShowFeed(false)} className="mt-4 bg-violet-500 text-white px-6 py-2 rounded-full text-sm font-semibold hover:bg-violet-600 transition">
                     Go explore the library
                   </button>
                 </div>
               ) : (
                 <div className="grid grid-cols-3 gap-4">
                   {feedResources.map(r => (
-                    <div
-                      key={r.id}
-                      onClick={() => { setShowFeed(false); handleOpenResource(r) }}
-                      className="cursor-pointer rounded-xl overflow-hidden bg-white shadow-sm hover:shadow-md transition group"
-                    >
+                    <div key={r.id} onClick={() => { setShowFeed(false); handleOpenResource(r) }} className="cursor-pointer rounded-xl overflow-hidden bg-white shadow-sm hover:shadow-md transition group">
                       <div className="h-44 bg-gray-100 overflow-hidden">
                         {getThumbnail(r) ? (
                           <img src={getThumbnail(r)!} alt={r.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"/>
@@ -573,9 +587,7 @@ async function checkFollowing(username: string) {
                       <div className="p-3">
                         <p className="font-semibold text-sm truncate">{r.title}</p>
                         <p className="text-xs text-gray-400">{r.media_type}</p>
-                        <p className="text-xs text-violet-400 mt-1">
-                          shared by {r.submitted_by}
-                        </p>
+                        <p className="text-xs text-violet-400 mt-1">shared by {r.submitted_by}</p>
                       </div>
                     </div>
                   ))}
