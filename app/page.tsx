@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import { getResources, addResource, upvoteResource, searchResources } from '../lib/resources'
+import { useRouter } from 'next/navigation'
+import { getCurrentUser, login, signup } from '../lib/auth'
 
 const CATEGORIES = [
   'Motivational', 'Women of Colour', 'Neurodivergent', 'Computing',
@@ -37,13 +39,22 @@ export default function Home() {
   const [showTags, setShowTags] = useState(false)
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
+  const [showAuth, setShowAuth] = useState(false)
+  const [authMode, setAuthMode] = useState<'login' | 'signup'>('login')
+  const [currentUser, setCurrentUser] = useState<string | null>(null)
+  const [authForm, setAuthForm] = useState({ username: '', password: '' })
+  const [authError, setAuthError] = useState('')
+  const router = useRouter()
 
   const [form, setForm] = useState({
     title: '', url: '', media_type: 'Video',
     description: '', tags: '', thumbnail_url: '', submitted_by: ''
   })
 
-  useEffect(() => { loadResources() }, [])
+  useEffect(() => {
+    loadResources()
+    setCurrentUser(getCurrentUser())
+  }, [])
 
   async function loadResources() {
     setLoading(true)
@@ -100,11 +111,20 @@ export default function Home() {
       {/* NAV */}
       <div className="flex items-center justify-between px-6 py-4">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-violet-500 flex items-center justify-center text-white">
+          <button
+            onClick={() => {
+              if (currentUser) {
+                router.push('/profile')
+              } else {
+                setShowAuth(true)
+              }
+            }}
+            className="w-10 h-10 rounded-full bg-violet-500 flex items-center justify-center text-white hover:bg-violet-600 transition"
+          >
             <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
               <path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/>
             </svg>
-          </div>
+          </button>
           <button className="bg-violet-500 text-white px-4 py-2 rounded-full font-semibold text-sm">
             Friend Activity
           </button>
@@ -287,6 +307,57 @@ export default function Home() {
               <input className="border rounded-lg px-3 py-2 text-sm outline-none focus:border-violet-400" placeholder="Your username" value={form.submitted_by} onChange={e => setForm({...form, submitted_by: e.target.value})}/>
               <button onClick={handleAdd} className="bg-violet-500 text-white py-2 rounded-full font-semibold hover:bg-violet-600 transition">
                 Share Resource
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* AUTH MODAL */}
+      {showAuth && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="font-bold text-lg">{authMode === 'login' ? 'Log In' : 'Sign Up'}</h2>
+              <button onClick={() => setShowAuth(false)} className="text-gray-400 hover:text-gray-600 text-xl">✕</button>
+            </div>
+            <div className="flex flex-col gap-3">
+              <input
+                className="border rounded-lg px-3 py-2 text-sm outline-none focus:border-violet-400"
+                placeholder="Username"
+                value={authForm.username}
+                onChange={e => setAuthForm({...authForm, username: e.target.value})}
+              />
+              <input
+                type="password"
+                className="border rounded-lg px-3 py-2 text-sm outline-none focus:border-violet-400"
+                placeholder="Password"
+                value={authForm.password}
+                onChange={e => setAuthForm({...authForm, password: e.target.value})}
+              />
+              {authError && <p className="text-red-400 text-xs">{authError}</p>}
+              <button
+                onClick={async () => {
+                  setAuthError('')
+                  const result = authMode === 'login'
+                    ? await login(authForm.username, authForm.password)
+                    : await signup(authForm.username, authForm.password)
+                  if (result.error) {
+                    setAuthError(result.error)
+                  } else {
+                    setCurrentUser(authForm.username)
+                    setShowAuth(false)
+                    setAuthForm({ username: '', password: '' })
+                  }
+                }}
+                className="bg-violet-500 text-white py-2 rounded-full font-semibold hover:bg-violet-600 transition"
+              >
+                {authMode === 'login' ? 'Log In' : 'Create Account'}
+              </button>
+              <button
+                onClick={() => setAuthMode(authMode === 'login' ? 'signup' : 'login')}
+                className="text-sm text-gray-400 hover:text-gray-600 text-center"
+              >
+                {authMode === 'login' ? "Don't have an account? Sign up" : 'Already have an account? Log in'}
               </button>
             </div>
           </div>
