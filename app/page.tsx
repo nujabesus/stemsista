@@ -369,7 +369,7 @@ export default function Home() {
                   onClick={() => handleSave(selected)}
                   className={`px-5 py-2 rounded-full text-sm font-semibold transition border ${savedIds.includes(selected.id) ? 'bg-violet-500 text-white border-violet-500' : 'border-violet-300 text-violet-500 hover:bg-violet-50'}`}
                 >
-                  {savedIds.includes(selected.id) ? '🔖 Saved' : '🔖 Save'}
+                  {savedIds.includes(selected.id) ? 'Saved' : 'Save'}
                 </button>
               </div>
 
